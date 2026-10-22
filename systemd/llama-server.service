@@ -1,0 +1,18 @@
+[Unit]
+Description=Qwen3-ASR llama.cpp server (llama-server, CUDA)
+# ❗ НЕ УДАЛЯТЬ (указание владельца): служба ПОГАШЕНА и ВЫКЛЮЧЕНА и ждёт своего часа — она нужна ДРУГИМ
+# проектам, а не только этому. Проверка: `systemctl --user is-active llama-server.service` → inactive.
+After=network-online.target
+#: Ограничитель краш-лупа: иначе при недоступном GPU процесс
+#: перезапускается вечно (и заливает лог).
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=__MODELS_SRC__/src/llama.cpp/build/bin/llama-server -m __MODELS_SRC__/models/Qwen3-ASR-1.7B-Q8_0.gguf --mmproj __MODELS_SRC__/models/mmproj-Qwen3-ASR-1.7B-Q8_0.gguf --api-key-file __MODELS_SRC__/api_keys.txt -ngl 99 --mmproj-offload -fa on -c 4096 -n 256 --temp 0 -t 20 -tb 20 --host 127.0.0.1 --port 8081
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

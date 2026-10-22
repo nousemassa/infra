@@ -1,0 +1,27 @@
+[Unit]
+# ГРАФ НАПОМИНАНИЙ: ОТДЕЛЬНЫЙ процесс — свой пул, свой чекпойнтер, свой лог, своя судьба.
+# Отдельный процесс, а не корутина в мосте: потоки напоминаний живут ДНЯМИ, и рестарт напоминаний
+# не должен быть рестартом бота (а падение бота не должно уносить незавершённые потоки).
+# Клиента Telegram здесь НЕТ намеренно — правило «одна сессия — один процесс»: исходящие граф кладёт
+# в очередь (таблица `outbox`), а отправляет мост. Слушает только loopback: ручку дёргает мост на этом же хосте.
+Description=Напоминания о визитах (LangGraph) — свой процесс
+After=network-online.target docker.service
+Wants=network-online.target
+# Лимитер как у моста и новостей: процесс ждёт зависимости сам.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=__WORKSPACE__
+# Передний план (run): супервизией занимается systemd.
+ExecStart=/bin/bash __WORKSPACE__/realty/bridge-up-reminders.sh run
+Restart=always
+RestartSec=5
+TimeoutStartSec=180
+# Лог отдельный: причина смерти процесса иначе невосстановима (тот же урок, что у моста).
+StandardOutput=append:__WORKSPACE__/realty/logs/reminders.log
+StandardError=append:__WORKSPACE__/realty/logs/reminders.log
+
+[Install]
+WantedBy=default.target

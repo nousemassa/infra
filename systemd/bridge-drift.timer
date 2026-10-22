@@ -1,0 +1,10 @@
+[Unit]
+Description=Каждые 5 минут проверять дрейф конфигурации контейнеров (алерт при изменении)
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target

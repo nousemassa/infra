@@ -1,0 +1,27 @@
+[Unit]
+# Мост: Telegram-бот записи на просмотры (MTProto-транспорт) поверх локального стека платформы.
+# Роль, а не инстанс: юнит про «мост», конкретные агенты/чаты живут в .env.
+Description=Bridge - Telegram bot (viewing bookings, MTProto)
+After=network-online.target docker.service
+Wants=network-online.target
+# Ограничитель краш-лупа: без него при недоступной БД процесс перезапускается вечно (и заливает лог).
+# Он не мешает холодному старту: зависимости ждёт сам мост (`app/startup.py`, бюджет 45 с
+# на зависимость), поэтому одна попытка старта длиннее 60 с и лимитер не набирается.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=__WORKSPACE__
+# Передний план (run), а не фон: супервизией занимается systemd.
+ExecStart=/bin/bash __WORKSPACE__/realty/bridge-up.sh run
+Restart=always
+RestartSec=5
+# Запас только на случай перехода на Type=notify (при Type=simple фаза старта заканчивается на exec).
+TimeoutStartSec=180
+# Без лога причина смерти моста не восстановима.
+StandardOutput=append:__WORKSPACE__/realty/logs/bridge.log
+StandardError=append:__WORKSPACE__/realty/logs/bridge.log
+
+[Install]
+WantedBy=default.target

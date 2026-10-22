@@ -1,0 +1,15 @@
+[project]
+name = "__PROJECT__-agent"
+version = "0.1.0"
+requires-python = ">=3.11"
+#: Зависимости — ПО РАЗБОРУ ИМПОРТОВ (правило 8): общий слой колёсом, остальное по факту употребления.
+#: Версия `agent-core` обязана совпадать с версией в `Dockerfile` шаблона: расхождение даёт образ со
+#: старым кодом при «правильной» зависимости.
+dependencies = ["agent-core==0.18.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["__PROJECT___agent*"]

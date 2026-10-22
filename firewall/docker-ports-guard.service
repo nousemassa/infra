@@ -1,0 +1,18 @@
+[Unit]
+Description=Ограничение опубликованных портов Docker по сети: наружу ничего, контейнерам можно
+Documentation=см. firewall/docker-ports-guard.sh в этом репозитории
+#: Правила iptables не переживают перезагрузку, поэтому ставим их ПОСЛЕ запуска docker: он создаёт
+#: цепочку DOCKER-USER, без неё ставить некуда.
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash __WORKSPACE__/infra/firewall/docker-ports-guard.sh apply
+#: `stop` возвращает систему в исходное состояние: откат — команда, а не «найди и удали руками».
+ExecStop=-/bin/bash __WORKSPACE__/infra/firewall/docker-ports-guard.sh remove
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,35 @@
+# Проект `__PROJECT__` (порт `__PORT__`): своя папка, свой композ, СВОЁ имя проекта (`__PROJECT__`),
+# общая сеть вендора. Правила и чек-лист — `infra/CONTRACT.md` в воркспейсе.
+name: __PROJECT__
+
+networks:
+  #: Сеть ОБЩАЯ и создаётся ВНЕ проекта — поэтому `external: true`: своя сеть изолировала бы службы от
+  #: тех, кто приходит к ним по имени.
+  platform:
+    external: true
+    name: ${PLATFORM_NETWORK:-agenta-oss-gh_agenta-oss-gh-network}
+
+services:
+  __PROJECT__:
+    image: REPLACE_ME:тег-или-digest        # digest, а не `latest`: развёртывание должно быть воспроизводимым
+    restart: unless-stopped
+    mem_limit: 256m
+    env_file: [../.env]                     # ОБЩИЙ `.env` воркспейса; свои значения — строкой ниже
+    environment:
+      #: Свой адрес служба получает ПО ИМЕНИ службы в общей сети. `host.docker.internal` не используем:
+      #: он не резолвится ни с хоста, ни в наших контейнерах.
+      NEIGHBOUR_URL: http://example-service:8085
+    ports:
+      #: Только loopback: наружу наши службы не смотрят.
+      - "127.0.0.1:__PORT__:8000"
+    volumes:
+      #: ❗ Тома — ЯВНЫМ именем. Иначе имя тома соберётся из имени проекта compose, и смена имени проекта
+      #: создаст ПУСТОЙ том, а старый останется несмонтированным: так молча «теряются» данные (корпус RAG,
+      #: чекпойнты графа). См. правило 7 контракта.
+      - type: volume
+        source: __PROJECT___data
+        target: /srv/__PROJECT__/data
+
+volumes:
+  __PROJECT___data:
+    name: __PROJECT__-data

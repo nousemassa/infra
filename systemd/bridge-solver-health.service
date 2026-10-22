@@ -1,0 +1,14 @@
+[Unit]
+Description=Сторож решателя (solver): /health → алерт, лечение контейнера или юнита
+# Решатель — контейнер с GPU, но хостовый юнит `solver.service` живёт как откат; сторож понимает
+# оба режима через `infra/lib/service_guard.sh`.
+After=network-online.target docker.service
+
+[Service]
+#: Воркспейс — НАСТРОЙКОЙ, а не от расположения файла: `infra/` выносится в отдельный репозиторий,
+#: и путь от скрипта перестанет указывать на воркспейс (см. `infra/lib/workspace.sh`).
+Environment=AGENT_WORKSPACE=__WORKSPACE__
+Type=oneshot
+# Отдельный сторож по той же причине, что у MCP: выходной код `infra/health/health.sh` — гейт выката моста, и
+# поломка решателя не должна блокировать выкат бота записей. Свой state-файл, свой юнит, своя судьба.
+ExecStart=/bin/bash __WORKSPACE__/infra/health/health-solver.sh

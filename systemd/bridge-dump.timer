@@ -1,0 +1,12 @@
+[Unit]
+Description=Ночной дамп баз продукта (realty, news, vectors, graph)
+
+[Timer]
+# 04:20, а не 04:00: в :00 расписаний на хосте и без нас хватает, а дамп читает базы целиком.
+OnCalendar=*-*-* 04:20
+# Хост может быть выключен ночью — тогда дамп надо снять сразу после запуска, а не пропустить сутки.
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,27 @@
+[Unit]
+# MCP-ЛИСТЕНЕР: ОТДЕЛЬНЫЙ процесс — свой порт, свой лог, своя судьба.
+# На порту 8087 живут только инструменты, поэтому падение листенера не уносит бота, падение бота
+# не уносит инструменты, а рестарт инструментов не является рестартом бота.
+# Платформа зовёт инструменты ИЗ КОНТЕЙНЕРА: привязка 0.0.0.0 нужна, до loopback хоста контейнер
+# не дотягивается. Вход закрыт ACL внутри приложения (чужой сети — 403), а не адресом привязки.
+Description=MCP listener - platform gateway tools (own process)
+After=network-online.target docker.service
+Wants=network-online.target
+# Лимитер как у моста и новостей: процесс ждёт зависимости сам (`app/mcp_main.py`).
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=__WORKSPACE__
+# Передний план (run): супервизией занимается systemd.
+ExecStart=/bin/bash __WORKSPACE__/realty/bridge-up-mcp.sh run
+Restart=always
+RestartSec=5
+TimeoutStartSec=180
+# Лог отдельный: причина смерти листенера иначе невосстановима (тот же урок, что у моста).
+StandardOutput=append:__WORKSPACE__/realty/logs/mcp.log
+StandardError=append:__WORKSPACE__/realty/logs/mcp.log
+
+[Install]
+WantedBy=default.target

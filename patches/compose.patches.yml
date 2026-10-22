@@ -1,0 +1,199 @@
+# Оверрайд вендорского стека Agenta — НАШ файл (tracked, не генерируется).
+#
+# Раньше этот файл генерировался heredoc'ом `infra/vendor-bringup/run-agenta-lowram.sh` ВНУТРЬ клона вендора
+# (`vendor/agenta/hosting/docker-compose/oss/docker-compose.gh.mem.local.yml`), а `vendor/` в
+# `.gitignore` ⇒ свежий клон терял проводку патчей МОЛЧА (шаг D17). Теперь он лежит у нас и
+# подключается штатным ключом вендора: `run.sh … --compose-file <абсолютный путь к этому файлу>`.
+#
+# Файл несёт ДВЕ вещи, и обе — «как мы запускаем этот стек»:
+#   1) ПРОВОДКУ ПАТЧЕЙ: монтирования файлов из `patches/applied/` (результат наложения, см.
+#      `infra/vendor-bringup/apply-vendor-patches.sh`) поверх кода в образах;
+#   2) НАШИ ЛОКАЛЬНЫЕ ПРАВКИ ЗАПУСКА: лимиты RAM, блокировку телеметрии (`extra_hosts` → 127.0.0.1),
+#      `command` для `api`.
+#
+# ❗ Источники монтирований — `patches/applied/`, а не `patches/`: туда скрипт-владелец кладёт
+# результат (для `.py` — трёхстороннее слияние с текущим файлом вендора, для `.js` — наш бандл
+# после проверки, что образ не пересобран). Каталог в `.gitignore`; его ОБЯЗАН создать
+# `infra/vendor-bringup/apply-vendor-patches.sh` ДО `up`, иначе docker молча создаст пустой каталог на месте
+# источника и контейнер сломается непонятно.
+#
+# Относительные пути резолвятся от project-dir (каталог первого `-f` = `…/hosting/docker-compose/oss`),
+# поэтому `../../../../../` — это корень воркспейса. Проверяется `docker compose … config`.
+services:
+  api:
+    # `unless-stopped`, а не `always`: `always` поднимает контейнер при старте демона
+    # ДАЖЕ после РУЧНОЙ остановки, а нам нужно обратное — погашенный вендор обязан остаться
+    # погашенным после перезагрузки («после перезагрузки стартует только выбранный»).
+    restart: unless-stopped
+    mem_limit: 1024m
+    # ВАЖНО: `AGENTA_API_URL` — ПУБЛИЧНЫЙ адрес (идёт в supertokens `api_domain` для сессий и в
+    # публичные вебхуки/callbacks); `AGENTA_API_INTERNAL_URL` — внутренний. В .env.oss.gh стоит
+    # внутрисетевой `http://api:8000/api` (нужен runner'у), и api-контейнер получал его же →
+    # supertokens видел «домен api ≠ домен website» и включал SameSite=None+HTTPS → вход в UI падал
+    # с «Something went wrong» (get_app_info(): core/auth/supertokens/config.py:63-70).
+    environment:
+      AGENTA_API_URL: http://localhost:8680/api
+      AGENTA_WEB_URL: http://localhost:8680
+      AGENTA_SERVICES_PUBLIC_URL: http://localhost:8680/services
+    volumes:
+      # ПАТЧ (наш, локальный): смонтированные файлы перекрывают код в образе.
+      # Причина: платформа использовала ОДИН AGENTA_SERVICES_URL и для payload'ов (их видит браузер —
+      # ему нужен same-origin из-за CORS), и для серверных вызовов (им нужен внутренний адрес).
+      # Патч: payload'ы получают services_public_url, серверные вызовы нормализуются на внутренний.
+      - "../../../../../infra/patches/applied/agenta-api/env.py:/app/oss/src/utils/env.py:ro"
+      - "../../../../../infra/patches/applied/agenta-api/service.py:/app/oss/src/core/workflows/service.py:ro"
+    extra_hosts:
+      # publicsuffix.org недоступен с хоста → блокируем в контейнере, чтобы tldextract
+      # мгновенно падал на встроенный snapshot вместо долгого ожидания и filelock-гонки.
+      - "publicsuffix.org:127.0.0.1"
+      #: Телеметрия PostHog выключена; хосты уводим в никуда, чтобы даже случайно
+      # вернувшийся ключ не смог отправить данные наружу (тот же приём, что для publicsuffix.org).
+      - "alef.agenta.ai:127.0.0.1"
+      - "us.i.posthog.com:127.0.0.1"
+      - "eu.i.posthog.com:127.0.0.1"
+      - "app.posthog.com:127.0.0.1"
+    # 1 воркер: нет гонки filelock (tldextract) на старте + меньше RAM.
+    # Полный набор флагов вендорной команды сохранён (короткий command вешает сервис).
+    command: >
+      newrelic-admin run-program gunicorn entrypoints.routers:app
+      --bind 0.0.0.0:8000
+      --worker-class uvicorn.workers.UvicornWorker
+      --workers 1
+      --worker-connections 1000
+      --backlog 2048
+      --keep-alive 5
+      --max-requests 10000
+      --max-requests-jitter 1000
+      --timeout 60
+      --graceful-timeout 30
+      --log-level info
+      --access-logfile -
+      --error-logfile -
+  web:
+    # `unless-stopped`, а не `always`: `always` поднимает контейнер при старте демона
+    # ДАЖЕ после РУЧНОЙ остановки, а нам нужно обратное — погашенный вендор обязан остаться
+    # погашенным после перезагрузки («после перезагрузки стартует только выбранный»).
+    restart: unless-stopped
+    mem_limit: 512m
+    # Браузеру нужны ДОСТУПНЫЕ адреса: см. api выше и web/entrypoint.sh:214-215.
+    environment:
+      AGENTA_API_URL: http://localhost:8680/api
+      AGENTA_WEB_URL: http://localhost:8680
+    # ВКЛЮЧЕНО 2026-10-01: патч «полное меню» смонтирован. Штатный переключатель Developer Mode
+    # в нашем окружении полное меню не держит (наблюдение пользователя), поэтому дефолт-патч оставлен.
+    extra_hosts:
+      - "alef.agenta.ai:127.0.0.1"
+      - "us.i.posthog.com:127.0.0.1"
+      - "eu.i.posthog.com:127.0.0.1"
+      - "app.posthog.com:127.0.0.1"
+    volumes:
+      - "../../../../../infra/patches/applied/agenta-web/_app-2f56bfdec0de251c.js:/app/oss/.next/static/chunks/pages/_app-2f56bfdec0de251c.js:ro"
+  worker-streams:
+    # `unless-stopped`, а не `always`: `always` поднимает контейнер при старте демона
+    # ДАЖЕ после РУЧНОЙ остановки, а нам нужно обратное — погашенный вендор обязан остаться
+    # погашенным после перезагрузки («после перезагрузки стартует только выбранный»).
+    restart: unless-stopped
+    mem_limit: 640m
+    environment:
+      AGENTA_SERVICES_PUBLIC_URL: http://localhost:8680/services
+    extra_hosts:
+      - "alef.agenta.ai:127.0.0.1"
+      - "us.i.posthog.com:127.0.0.1"
+      - "eu.i.posthog.com:127.0.0.1"
+      - "app.posthog.com:127.0.0.1"
+    volumes:
+      - "../../../../../infra/patches/applied/agenta-api/env.py:/app/oss/src/utils/env.py:ro"
+      - "../../../../../infra/patches/applied/agenta-api/service.py:/app/oss/src/core/workflows/service.py:ro"
+  worker-queues:
+    # `unless-stopped`, а не `always`: `always` поднимает контейнер при старте демона
+    # ДАЖЕ после РУЧНОЙ остановки, а нам нужно обратное — погашенный вендор обязан остаться
+    # погашенным после перезагрузки («после перезагрузки стартует только выбранный»).
+    restart: unless-stopped
+    mem_limit: 640m
+    environment:
+      AGENTA_SERVICES_PUBLIC_URL: http://localhost:8680/services
+    extra_hosts:
+      - "alef.agenta.ai:127.0.0.1"
+      - "us.i.posthog.com:127.0.0.1"
+      - "eu.i.posthog.com:127.0.0.1"
+      - "app.posthog.com:127.0.0.1"
+    volumes:
+      - "../../../../../infra/patches/applied/agenta-api/env.py:/app/oss/src/utils/env.py:ro"
+      - "../../../../../infra/patches/applied/agenta-api/service.py:/app/oss/src/core/workflows/service.py:ro"
+  web-mobile:
+    # `unless-stopped`, а не `always`: `always` поднимает контейнер при старте демона
+    # ДАЖЕ после РУЧНОЙ остановки, а нам нужно обратное — погашенный вендор обязан остаться
+    # погашенным после перезагрузки («после перезагрузки стартует только выбранный»).
+    restart: unless-stopped
+    mem_limit: 384m
+    # Тот же урок, что у web: entrypoint кладёт AGENTA_API_URL в window.__env для БРАУЗЕРА,
+    # поэтому мобильному UI тоже нужны публичные адреса (иначе api:8000 из браузера недостижим).
+    environment:
+      AGENTA_API_URL: http://localhost:8680/api
+      AGENTA_WEB_URL: http://localhost:8680
+    # ВКЛЮЧЕНО 2026-10-01: патч когорты (чтобы мобильное приложение не публиковало `agenta-classic-mode=0`).
+    volumes:
+      - "../../../../../infra/patches/applied/agenta-web-mobile/2y7q1do3_9dr7.js:/app/mobile/.next/static/chunks/2y7q1do3_9dr7.js:ro"
+      - "../../../../../infra/patches/applied/agenta-web-mobile/2kynjz4a8nzi1.js:/app/mobile/.next/static/chunks/2kynjz4a8nzi1.js:ro"
+      - "../../../../../infra/patches/applied/agenta-web-mobile/_0dcler-._.js:/app/mobile/.next/server/chunks/ssr/_0dcler-._.js:ro"
+  #: ❗ ОДНОРАЗОВАЯ служба: применяет миграции и ВЫХОДИТ с кодом 0. В вендорском композе `restart` у неё
+  #: не задан (то есть `no`) — и это правильно. Наш `vendor-switch.sh` одно время раздавал
+  #: `unless-stopped` всему проекту, и мигратор превращался в вечный цикл: 459 перезапусков, целое ядро
+  #: CPU (окно 241). Здесь намерение зафиксировано на уровне композа: переживёт и `up` вендора, и свежий
+  #: клон, даже если скрипт обойдут.
+  alembic:
+    restart: "no"
+
+  postgres: {mem_limit: 384m, restart: unless-stopped}
+  redis-volatile: {mem_limit: 192m, restart: unless-stopped}
+  redis-durable: {mem_limit: 320m, restart: unless-stopped}
+  seaweedfs: {mem_limit: 512m, restart: unless-stopped}
+  supertokens: {mem_limit: 768m, restart: unless-stopped}
+  composio: {mem_limit: 256m, restart: unless-stopped}
+  cron:
+    # `unless-stopped`, а не `always`: `always` поднимает контейнер при старте демона
+    # ДАЖЕ после РУЧНОЙ остановки, а нам нужно обратное — погашенный вендор обязан остаться
+    # погашенным после перезагрузки («после перезагрузки стартует только выбранный»).
+    restart: unless-stopped
+    mem_limit: 256m
+    init: false
+    environment:
+      AGENTA_SERVICES_PUBLIC_URL: http://localhost:8680/services
+    extra_hosts:
+      - "alef.agenta.ai:127.0.0.1"
+      - "us.i.posthog.com:127.0.0.1"
+      - "eu.i.posthog.com:127.0.0.1"
+      - "app.posthog.com:127.0.0.1"
+    volumes:
+      # ПАТЧ (наш, локальный): смонтированные файлы перекрывают код в образе.
+      # Причина: платформа использовала ОДИН AGENTA_SERVICES_URL и для payload'ов (их видит браузер —
+      # ему нужен same-origin из-за CORS), и для серверных вызовов (им нужен внутренний адрес).
+      # Патч: payload'ы получают services_public_url, серверные вызовы нормализуются на внутренний.
+      - "../../../../../infra/patches/applied/agenta-api/env.py:/app/oss/src/utils/env.py:ro"
+      - "../../../../../infra/patches/applied/agenta-api/service.py:/app/oss/src/core/workflows/service.py:ro"
+
+  #: Сервис-плоскость (Evaluations/Playground) вызывает LLM напрямую через litellm;
+  # ключ даём OpenAI-совместимым путём (RouterAI), значения — из стек-энва, не из файла оверрайда.
+  services:
+    # `unless-stopped`, а не `always`: `always` поднимает контейнер при старте демона
+    # ДАЖЕ после РУЧНОЙ остановки, а нам нужно обратное — погашенный вендор обязан остаться
+    # погашенным после перезагрузки («после перезагрузки стартует только выбранный»).
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: ${ROUTERAI_API_KEY}
+      OPENAI_BASE_URL: ${ROUTERAI_BASE_URL}
+
+  #: Тот же обход, что у cron: Docker инжектит docker-init под GLIBC>=2.38 (хост 2.43),
+  # а в образе runner libc старше ⇒ при ПЕРЕсоздании контейнер падает в рестарт-луп.
+  runner:
+    # `unless-stopped`, а не `always`: `always` поднимает контейнер при старте демона
+    # ДАЖЕ после РУЧНОЙ остановки, а нам нужно обратное — погашенный вендор обязан остаться
+    # погашенным после перезагрузки («после перезагрузки стартует только выбранный»).
+    restart: unless-stopped
+    init: false
+
+  traefik:
+    restart: unless-stopped
+
+  nginx:
+    restart: unless-stopped

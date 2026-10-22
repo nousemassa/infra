@@ -1,0 +1,11 @@
+[Unit]
+Description=Обрезка лога моста (потолок размера файла)
+After=bridge.service
+
+[Service]
+#: Воркспейс — НАСТРОЙКОЙ, а не от расположения файла: `infra/` выносится в отдельный репозиторий,
+#: и путь от скрипта перестанет указывать на воркспейс (см. `infra/lib/workspace.sh`).
+Environment=AGENT_WORKSPACE=__WORKSPACE__
+WorkingDirectory=__WORKSPACE__
+Type=oneshot
+ExecStart=/bin/bash __WORKSPACE__/infra/logs/bridge-log-trim.sh

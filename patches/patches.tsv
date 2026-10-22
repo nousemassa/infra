@@ -1,0 +1,27 @@
+# Манифест патчей вендора Agenta (шаг D17). Один источник того, ЧТО мы патчим и ОТ ЧЕГО.
+#
+# Колонки (TAB): kind · our_file · vendor_source · container_target · base · image
+#   kind             py — исходник (.py): накладывается ТРЁХСТОРОННИМ СЛИЯНИЕМ;
+#                    js — артефакт сборки: ЗАМЕНЯЕТСЯ после проверки личности цели.
+#   our_file         наш файл в этом репозитории (то, что кладём/сливаем).
+#   vendor_source    «чужое»: для py — `clone:<путь>` (файл в клоне вендора); для js — `image:<образ>`.
+#   container_target путь внутри контейнера (там его перекрывает монтирование, см. compose.patches.yml).
+#   base             ЗАПИСАННАЯ база, ОТ КОТОРОЙ сделан патч: для py — коммит вендора;
+#                    для js — `sha256:<хэш>` файла в образе на момент создания патча.
+#   image            образ, в котором живёт целевой файл (для py — только сверка «образ ⇄ клон» в отчёте;
+#                    для js пусто, образ назван в vendor_source).
+#
+# ❗ База — НАЗВАННАЯ, проверяемая версия, а не скрытое условие: скрипт-владелец
+# `infra/vendor-bringup/apply-vendor-patches.sh` всегда печатает, на какой версии вендора сработал, и ГРОМКО
+# отказывает, если чужое изменило НАШ участок (py) или бандл пересобран (js).
+#
+# py-база: v0.121.5 = коммит 99f85e3aff6f949f62adfe99f358993d80fb3aaf.
+#   блоб-хэши на этой базе: env.py = 31f8877552db05826f8b25f01dfc7cc9a2f2a867
+#                           service.py = e10332dbc51230b9eff51ccdff47cf1ca0f12b19
+# js-база: sha256 целевого файла в образе на 17.10 (образы agenta-web / agenta-web-mobile, тег latest).
+py	patches/agenta-api/env.py	clone:api/oss/src/utils/env.py	/app/oss/src/utils/env.py	99f85e3aff6f949f62adfe99f358993d80fb3aaf	ghcr.io/agenta-ai/agenta-api:latest
+py	patches/agenta-api/service.py	clone:api/oss/src/core/workflows/service.py	/app/oss/src/core/workflows/service.py	99f85e3aff6f949f62adfe99f358993d80fb3aaf	ghcr.io/agenta-ai/agenta-api:latest
+js	patches/agenta-web/_app-2f56bfdec0de251c.js	image:ghcr.io/agenta-ai/agenta-web:latest	/app/oss/.next/static/chunks/pages/_app-2f56bfdec0de251c.js	sha256:3f76d2d6e84f61fb2c6cd4bad87fc3ed6f11e0d8484222288169fbb9eaa2bb03	
+js	patches/agenta-web-mobile/2y7q1do3_9dr7.js	image:ghcr.io/agenta-ai/agenta-web-mobile:latest	/app/mobile/.next/static/chunks/2y7q1do3_9dr7.js	sha256:2009638dd3a55bc0926538495e57bb14022be21e7347ff6dfa854a554282d5ce	
+js	patches/agenta-web-mobile/2kynjz4a8nzi1.js	image:ghcr.io/agenta-ai/agenta-web-mobile:latest	/app/mobile/.next/static/chunks/2kynjz4a8nzi1.js	sha256:81ad2a698bc41f88d1eb26ca324bc618b5c413f70f768814f0d2b8dc8bade60a	
+js	patches/agenta-web-mobile/_0dcler-._.js	image:ghcr.io/agenta-ai/agenta-web-mobile:latest	/app/mobile/.next/server/chunks/ssr/_0dcler-._.js	sha256:2661dceb1e32944414942d4725f5950c78bd5b00292585c29fb103669d27915a	

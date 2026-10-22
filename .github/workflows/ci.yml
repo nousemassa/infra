@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Скрипты синтаксически целы
+        run: find . -name '*.sh' -not -path './.git/*' -print0 | xargs -0 -n1 bash -n
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Линтер Python
+        run: |
+          python -m pip install --quiet ruff
+          python -m ruff check .
+
+      # Таблица вендоров — источник истины: оба вендора должны быть описаны, иначе обвязка не ответит,
+      # что вендор умеет.
+      - name: Таблица вендоров читается и полна
+        run: |
+          test -s vendors.tsv
+          for vendor in agenta openlit; do
+            grep -q "^$vendor	" vendors.tsv || { echo "нет вендора $vendor в vendors.tsv"; exit 1; }
+          done
+          bash -c 'source lib/vendor.sh; for v in agenta openlit; do
+            echo "$v runtime=$(vendor_capability "$v" runtime) stack=$(vendor_capability "$v" compose_project)"; done'
+
+      # Подстановки: юниты содержат __WORKSPACE__ и подобные, раскладка их раскрывает. Здесь собирается
+      # обманка воркспейса с заглушками файлов продуктов.
+      - name: Подстановки юнитов сходятся
+        run: |
+          ws=/tmp/ws
+          mkdir -p "$ws"/{realty,news,models,search,dumps}
+          ln -s "$GITHUB_WORKSPACE" "$ws/infra"
+          touch "$ws/.env"
+          for stub in realty/bridge-up.sh realty/bridge-up-mcp.sh realty/bridge-up-reminders.sh \
+                      news/bridge-up-news.sh; do
+            printf '#!/bin/sh\nexit 0\n' > "$ws/$stub"; chmod +x "$ws/$stub"
+          done
+          AGENT_WORKSPACE="$ws" MODELS_SRC="$ws/models" \
+            DB_DUMP_DIR="$ws/dumps" REBOOT_SNAPSHOT="$ws/snapshot.json" \
+            bash systemd/install.sh --check-only

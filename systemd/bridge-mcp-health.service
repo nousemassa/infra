@@ -1,0 +1,12 @@
+[Unit]
+Description=Сторож MCP-листенера: /health → алерт, лечение юнита из failed
+After=bridge-mcp.service
+
+[Service]
+#: Воркспейс — НАСТРОЙКОЙ, а не от расположения файла: `infra/` выносится в отдельный репозиторий,
+#: и путь от скрипта перестанет указывать на воркспейс (см. `infra/lib/workspace.sh`).
+Environment=AGENT_WORKSPACE=__WORKSPACE__
+Type=oneshot
+# Отдельный сторож, а не строка в `infra/health/health.sh`: выходной код того — гейт выката моста, и поломка
+# инструментов не должна блокировать выкат бота записей.
+ExecStart=/bin/bash __WORKSPACE__/infra/health/health-mcp.sh

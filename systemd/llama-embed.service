@@ -1,0 +1,19 @@
+[Unit]
+Description=EmbeddingGemma 2 embedding server (llama.cpp, CUDA, text-only)
+#: ОТКАТ, а не рабочий путь (указание владельца: «emb должен быть в докере»). Действующий путь
+#: эмбеддингов — контейнер `models-embed-1` из `models/compose.models.yaml`; этот юнит гасит и
+#: выключает `models/gpu-up.sh`, иначе два владельца порта 8082.
+After=network-online.target
+#: Ограничитель краш-лупа: иначе при недоступном GPU процесс
+#: перезапускается вечно (и заливает лог).
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=__MODELS_SRC__/src/llama.cpp/build-embed/bin/llama-server -m __MODELS_SRC__/models/embeddinggemma-2-Q8_0.gguf --api-key-file __MODELS_SRC__/api_keys.txt --embeddings --pooling mean -ngl 99 -fa on -c 8192 -t 20 --host 127.0.0.1 --port 8082
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

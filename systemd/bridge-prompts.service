@@ -1,0 +1,20 @@
+[Unit]
+Description=Сторож текстов агентов: файл промпта в репозитории = выкаченная ревизия агента
+# Сверка ходит HTTP на 127.0.0.1:8680 (платформа в стеке вендора), поэтому ждём сеть и докер.
+# ❗ В user-юните это упорядочивание ДЕКОРАТИВНО — как и у соседей-сторожей (см. комментарий в
+# `bridge-search-health.service`): поле документирует намерение, а не гарантирует порядок.
+After=network-online.target docker.service
+
+[Service]
+#: Воркспейс — НАСТРОЙКОЙ, а не от расположения файла (обвязка выносится в свой репозиторий).
+#: От неё сторож находит `infra/vendor-bringup/agent-prompts.py`, `agent-prompts.tsv`, `realty/.env`, `news/.env`
+#: и ключ `PLATFORM_API_KEY` в корневом `.env`.
+Environment=AGENT_WORKSPACE=__WORKSPACE__
+Type=oneshot
+# Сторож, а не гейт: `make agent-prompts-check` по-прежнему зовут руками, выкат — отдельная команда.
+# Механизм сверки ОДИН (`infra/vendor-bringup/agent-prompts.py check`) — чтобы не завелось второй «формы расхождения».
+# Алерта владельцу НЕТ намеренно: расхождение промпта не авария бота (служба жива и отвечает), и шум
+# в Telegram научил бы алерты не читать. Видно журналом и кодом 1 (`systemctl --user --failed`).
+# Таймаут поднят: три агента × HTTP-таймаут 30 с = до 90 с, а дефолт старта oneshot — ровно 90 с.
+TimeoutStartSec=180
+ExecStart=/bin/bash __WORKSPACE__/infra/health/health-prompts.sh

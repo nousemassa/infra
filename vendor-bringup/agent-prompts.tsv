@@ -1,0 +1,18 @@
+# Тексты агентов: файл в репозитории ⇄ агент на платформе.
+#
+# Правило проекта: РЕПОЗИТОРИЙ — источник правды о текстах агентов, платформа — цель выката.
+# Пока связь держится только этим файлом, её проверяет и применяет ОДИН владелец:
+#     python3 infra/vendor-bringup/agent-prompts.py check          # сверка (сторож, нужен живой стек)
+#     python3 infra/vendor-bringup/agent-prompts.py deploy <agent> # выкат новой ревизии (+ --write-env)
+#
+# Колонки (TAB): agent · prompt_file · env_file · revision_key
+#   agent          короткое имя шага для `deploy <agent>`
+#   prompt_file    файл в репозитории — ТЕКСТ `agents_md` агента (источник правды)
+#   env_file       где лежит id выкаченной ревизии (файл вне git — в нём и секреты)
+#   revision_key   ключ в этом файле, значением которого является id ревизии
+#
+# ❗ `realty/onboarding/compliance.md` здесь НЕТ намеренно: это операторская/комплаенс-записка,
+# а не `agents_md` агента — платформе она не выкатывается.
+dialog	realty/onboarding/realtor-bot.md	realty/.env	DIALOG_REVISION_ID
+listing	realty/onboarding/listing-writer.md	realty/.env	LISTING_REVISION_ID
+news	news/onboarding/news-hunter.md	news/.env	NEWS_REVISION_ID

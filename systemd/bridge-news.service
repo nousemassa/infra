@@ -1,0 +1,25 @@
+[Unit]
+# Бот новостей: ОТДЕЛЬНЫЙ процесс — свой токен, свой лог, своя судьба.
+# Отдельный процесс, а не второй клиент в мосте: в мосте `app.state.telegram` единичен, а `start()`
+# поднимает петли напоминаний/календаря ⇒ совмещённый бот дал бы дубли уведомлений.
+Description=News bot - Telegram bot for news cards (publish to channel)
+After=network-online.target docker.service
+Wants=network-online.target
+# Лимитер как у моста: новостной процесс ждёт зависимости сам (`app/news_main.py`).
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=__WORKSPACE__
+# Передний план (run): супервизией занимается systemd.
+ExecStart=/bin/bash __WORKSPACE__/news/bridge-up-news.sh run
+Restart=always
+RestartSec=5
+TimeoutStartSec=180
+# Лог отдельный: иначе причина смерти процесса невосстановима.
+StandardOutput=append:__WORKSPACE__/news/logs/news.log
+StandardError=append:__WORKSPACE__/news/logs/news.log
+
+[Install]
+WantedBy=default.target
